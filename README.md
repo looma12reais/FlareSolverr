@@ -9,7 +9,7 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ngosang)
 
-FlareSolverr is a proxy server to bypass Cloudflare and DDoS-GUARD protection.
+FlareSolverr is a proxy server to bypass Cloudflare and DDoS-GUARD protection. This fork uses a fork of Selenium Wire for fixing [this issue](https://github.com/FlareSolverr/FlareSolverr/issues/1162).
 
 ## How it works
 
