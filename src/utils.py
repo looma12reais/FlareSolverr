@@ -5,15 +5,14 @@ import platform
 import re
 import shutil
 import subprocess
-import tempfile
-import urllib.parse
 from pathlib import Path
 from typing import Any, cast
 
 from selenium.webdriver.chrome.webdriver import WebDriver
+from seleniumwire import ProxyConfig, SeleniumWireOptions
+from seleniumwire_gpl import UndetectedChrome
 
 import undetected_chromedriver as uc
-from seleniumwire_gpl import UndetectedChrome
 
 FLARESOLVERR_VERSION = None
 PLATFORM_VERSION = None
@@ -61,77 +60,6 @@ def get_current_platform() -> str:
     return PLATFORM_VERSION
 
 
-def create_proxy_extension(proxy: dict[str, Any]) -> str:
-    parsed_url = urllib.parse.urlparse(proxy["url"])
-    scheme = parsed_url.scheme
-    host = parsed_url.hostname
-    port = parsed_url.port
-    username = proxy["username"]
-    password = proxy["password"]
-    manifest_json = """
-    {
-        "version": "1.0.0",
-        "manifest_version": 3,
-        "name": "Chrome Proxy",
-        "permissions": [
-            "proxy",
-            "tabs",
-            "storage",
-            "webRequest",
-            "webRequestAuthProvider"
-        ],
-        "host_permissions": [
-          "<all_urls>"
-        ],
-        "background": {
-          "service_worker": "background.js"
-        },
-        "minimum_chrome_version": "76.0.0"
-    }
-    """
-
-    background_js = """
-    var config = {
-        mode: "fixed_servers",
-        rules: {
-            singleProxy: {
-                scheme: "%s",
-                host: "%s",
-                port: %d
-            },
-            bypassList: ["localhost"]
-        }
-    };
-
-    chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
-
-    function callbackFn(details) {
-        return {
-            authCredentials: {
-                username: "%s",
-                password: "%s"
-            }
-        };
-    }
-
-    chrome.webRequest.onAuthRequired.addListener(
-        callbackFn,
-        { urls: ["<all_urls>"] },
-        ['blocking']
-    );
-    """ % (scheme, host, port, username, password)
-
-    proxy_extension_dir = tempfile.mkdtemp()
-
-    with open(os.path.join(proxy_extension_dir, "manifest.json"), "w") as f:
-        f.write(manifest_json)
-
-    with open(os.path.join(proxy_extension_dir, "background.js"), "w") as f:
-        f.write(background_js)
-
-    return proxy_extension_dir
-
-
 def get_webdriver(proxy: dict[str, Any] | None = None) -> WebDriver:
     global PATCHED_DRIVER_PATH, USER_AGENT
     logging.debug("Launching web browser...")
@@ -161,18 +89,6 @@ def get_webdriver(proxy: dict[str, Any] | None = None) -> WebDriver:
     if USER_AGENT is not None:
         options.add_argument("--user-agent=%s" % USER_AGENT)
 
-    proxy_extension_dir = None
-    if proxy and all(key in proxy for key in ["url", "username", "password"]):
-        proxy_extension_dir = create_proxy_extension(proxy)
-        options.add_argument("--disable-features=DisableLoadExtensionCommandLineSwitch")
-        options.add_argument(
-            "--load-extension=%s" % os.path.abspath(proxy_extension_dir)
-        )
-    elif proxy and "url" in proxy:
-        proxy_url = proxy["url"]
-        logging.debug("Using webdriver proxy: %s", proxy_url)
-        options.add_argument("--proxy-server=%s" % proxy_url)
-
     # note: headless mode is detected (headless = True)
     # we launch the browser in head-full mode with the window hidden
     windows_headless = False
@@ -198,18 +114,38 @@ def get_webdriver(proxy: dict[str, Any] | None = None) -> WebDriver:
     # detect chrome path
     browser_executable_path = get_chrome_exe_path()
 
-    # downloads and patches the chromedriver
-    # if we don't set driver_executable_path it downloads, patches, and deletes the driver each time
-    try:
-        driver = UndetectedChrome(
-            options=options,
-            browser_executable_path=browser_executable_path,
-            driver_executable_path=driver_exe_path,
-            version_main=version_main,
-            windows_headless=windows_headless,
-            headless=get_config_headless(),
-            enable_cdp_events=True,
+    seleniumwire_options = None
+    if proxy and "url" in proxy:
+        if not isinstance(proxy["url"], str):
+            raise ValueError("Proxy URL must be a string")
+            
+        upstream_proxy_kwargs = {}
+        key = "https" if proxy["url"].startswith("https") else "http"
+        to_strip = len(key) + 3  # length of "http://" or "https://"
+        
+        if "username" in proxy and "password" in proxy:
+            upstream_proxy_kwargs[key] = f"{key}://{proxy['username']}:{proxy['password']}@{proxy['url'][to_strip:]}"
+        else:
+            upstream_proxy_kwargs[key] = proxy["url"]
+            
+        logging.info(f"Using upstream proxy: {upstream_proxy_kwargs[key]}")
+        seleniumwire_options = SeleniumWireOptions(
+            upstream_proxy=ProxyConfig(**upstream_proxy_kwargs)
         )
+    try:
+        chrome_kwargs = {
+            "options": options,
+            "browser_executable_path": browser_executable_path,
+            "driver_executable_path": driver_exe_path,
+            "version_main": version_main,
+            "windows_headless": windows_headless,
+            "headless": get_config_headless(),
+            "enable_cdp_events": True,
+        }
+        if seleniumwire_options is not None:
+            chrome_kwargs["seleniumwire_options"] = seleniumwire_options
+
+        driver = UndetectedChrome(**chrome_kwargs)
     except Exception as e:
         logging.error("Error starting Chrome: %s" % e)
         # No point in continuing if we cannot retrieve the driver
@@ -231,10 +167,6 @@ def get_webdriver(proxy: dict[str, Any] | None = None) -> WebDriver:
             logging.debug(
                 "Could not persist patched driver path (missing patcher attributes)"
             )
-
-    # clean up proxy extension directory
-    if proxy_extension_dir is not None:
-        shutil.rmtree(proxy_extension_dir)
 
     # selenium vanilla
     # options = webdriver.ChromeOptions()

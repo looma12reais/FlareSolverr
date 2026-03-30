@@ -5,7 +5,7 @@ import time
 from datetime import timedelta
 from html import escape
 from typing import cast
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 
 from func_timeout import FunctionTimedOut, func_timeout
 from selenium.common import TimeoutException
@@ -19,6 +19,7 @@ from selenium.webdriver.support.expected_conditions import (
     title_is,
 )
 from selenium.webdriver.support.wait import WebDriverWait
+from seleniumwire.request import Request
 from seleniumwire_gpl.webdriver import UndetectedChrome
 
 import utils
@@ -392,10 +393,34 @@ def _resolve_turnstile_captcha(req: V1RequestBase, driver: WebDriver):
             logging.debug("Turnstile challenge not found")
     return turnstile_token
 
+BLOCK_SUFFIXES = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".svg",
+    ".ico",
+    ".tiff",
+    ".tif",
+    ".jpe",
+    ".apng",
+    ".avif",
+    ".heic",
+    ".heif",
+    ".css",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+)
 
 def _evil_logic(
     req: V1RequestBase, driver: WebDriver, method: str
 ) -> ChallengeResolutionT:
+    casted_driver = cast(UndetectedChrome, driver)
     res = ChallengeResolutionT({})
     res.status = STATUS_OK
     res.message = ""
@@ -407,63 +432,14 @@ def _evil_logic(
     disable_media = utils.get_config_disable_media()
     if req.disableMedia is not None:
         disable_media = req.disableMedia
-    if disable_media:
-        block_urls = [
-            # Images
-            "*.png",
-            "*.jpg",
-            "*.jpeg",
-            "*.gif",
-            "*.webp",
-            "*.bmp",
-            "*.svg",
-            "*.ico",
-            "*.PNG",
-            "*.JPG",
-            "*.JPEG",
-            "*.GIF",
-            "*.WEBP",
-            "*.BMP",
-            "*.SVG",
-            "*.ICO",
-            "*.tiff",
-            "*.tif",
-            "*.jpe",
-            "*.apng",
-            "*.avif",
-            "*.heic",
-            "*.heif",
-            "*.TIFF",
-            "*.TIF",
-            "*.JPE",
-            "*.APNG",
-            "*.AVIF",
-            "*.HEIC",
-            "*.HEIF",
-            # Stylesheets
-            "*.css",
-            "*.CSS",
-            # Fonts
-            "*.woff",
-            "*.woff2",
-            "*.ttf",
-            "*.otf",
-            "*.eot",
-            "*.WOFF",
-            "*.WOFF2",
-            "*.TTF",
-            "*.OTF",
-            "*.EOT",
-        ]
-        try:
-            logging.debug("Network.setBlockedURLs: %s", block_urls)
-            driver.execute_cdp_cmd("Network.enable", {})
-            driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": block_urls})
-        except Exception:
-            # if CDP commands are not available or fail, ignore and continue
-            logging.debug(
-                "Network.setBlockedURLs failed or unsupported on this webdriver"
-            )
+
+        def interceptor(request: Request):
+            if disable_media:
+                request_path = urlparse(request.url).path.lower()
+                if request_path.endswith(BLOCK_SUFFIXES):
+                    request.abort()
+
+        casted_driver.request_interceptor = interceptor
 
     # navigate to the page
     logging.debug(f"Navigating to... {req.url}")
@@ -582,7 +558,7 @@ def _evil_logic(
 
     challenge_res = ChallengeResolutionResultT({})
     challenge_res.url = driver.current_url
-    challenge_res.status = 200  # todo: fix, selenium not provides this info
+    challenge_res.status = 200
     challenge_res.cookies = driver.get_cookies()
     challenge_res.userAgent = utils.get_user_agent(driver)
     challenge_res.turnstile_token = turnstile_token
