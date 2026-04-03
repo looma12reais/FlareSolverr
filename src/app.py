@@ -1,4 +1,3 @@
-# pyright: reportGeneralTypeIssues=false, reportCallIssue=false
 from http import HTTPStatus
 import json
 import logging
