@@ -1,11 +1,33 @@
 import unittest
 from typing import Any, cast
 
-from webtest import TestApp
+from fastapi.testclient import TestClient
 
-import flaresolverr
+import app
 import utils
-from dtos import STATUS_OK, ChallengeResolutionResultT, V1ResponseBase
+from models import STATUS_OK, ChallengeResolutionResultT, V1ResponseBase
+
+
+class CompatTestClient:
+    def __init__(self, app):
+        self.client = TestClient(app)
+
+    def get(self, path: str, status: int | None = None):
+        response = self.client.get(path)
+        if status is not None:
+            assert response.status_code == status
+        return response
+
+    def post(self, path: str, json: Any | None = None, status: int | None = None):
+        response = self.client.post(path, json=json)
+        if status is not None:
+            assert response.status_code == status
+        return response
+
+    def post_json(
+        self, path: str, params: Any | None = None, status: int | None = None
+    ):
+        return self.post(path, json=params, status=status)
 
 
 def _find_obj_by_key(
@@ -20,7 +42,7 @@ def _find_obj_by_key(
 def asset_cloudflare_solution(self, res, site_url, site_text):
     self.assertEqual(res.status_code, 200)
 
-    body = V1ResponseBase(res.json)
+    body = V1ResponseBase(res.json())
     self.assertEqual(STATUS_OK, body.status)
     self.assertEqual("Challenge solved!", body.message)
 
@@ -61,7 +83,7 @@ def asset_cloudflare_solution(self, res, site_url, site_text):
 
 
 class TestFlareSolverr(unittest.TestCase):
-    app = TestApp(flaresolverr.app)
+    app = CompatTestClient(app.app)
     # wait until the server is ready
     app.get("/")
 
@@ -153,9 +175,9 @@ class TestFlareSolverr(unittest.TestCase):
         ]
         for site_name, site_url, site_text in sites_get:
             with self.subTest(msg=site_name):
-                res = self.app.post_json(  # pyright: ignore[reportUnknownMemberType]
+                res = self.app.post(
                     "/v1",
-                    {"cmd": "request.get", "url": site_url},  # type: ignore[arg-type]
+                    json={"cmd": "request.get", "url": site_url},
                 )
                 asset_cloudflare_solution(self, res, site_url, site_text)
 
@@ -171,9 +193,13 @@ class TestFlareSolverr(unittest.TestCase):
 
         for site_name, site_url, site_text, post_data in sites_post:
             with self.subTest(msg=site_name):
-                res = self.app.post_json(  # pyright: ignore[reportUnknownMemberType]
+                res = self.app.post(
                     "/v1",
-                    {"cmd": "request.post", "url": site_url, "postData": post_data},  # type: ignore[arg-type]
+                    json={
+                        "cmd": "request.post",
+                        "url": site_url,
+                        "postData": post_data,
+                    },
                 )
                 asset_cloudflare_solution(self, res, site_url, site_text)
 

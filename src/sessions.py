@@ -8,6 +8,7 @@ from selenium.webdriver.chrome.webdriver import WebDriver
 
 import utils
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Session:
@@ -81,7 +82,7 @@ class SessionsStorage:
         session, fresh = self.create(session_id)
 
         if ttl is not None and not fresh and session.lifetime() > ttl:
-            logging.debug(f'session\'s lifetime has expired, so the session is recreated (session_id={session_id})')
+            logger.debug(f'session\'s lifetime has expired, so the session is recreated (session_id={session_id})')
             session, fresh = self.create(session_id, force_new=True)
 
         return session, fresh

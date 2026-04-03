@@ -1,15 +1,10 @@
 # FlareSolverr
 
-[![Latest release](https://img.shields.io/github/v/release/FlareSolverr/FlareSolverr)](https://github.com/FlareSolverr/FlareSolverr/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/flaresolverr/flaresolverr)](https://hub.docker.com/r/flaresolverr/flaresolverr)
-[![Docker Stars](https://img.shields.io/docker/stars/flaresolverr/flaresolverr)](https://hub.docker.com/r/flaresolverr/flaresolverr)
-[![GitHub issues](https://img.shields.io/github/issues/FlareSolverr/FlareSolverr)](https://github.com/FlareSolverr/FlareSolverr/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/FlareSolverr/FlareSolverr)](https://github.com/FlareSolverr/FlareSolverr/pulls)
-[![GitHub Repo stars](https://img.shields.io/github/stars/FlareSolverr/FlareSolverr)](https://github.com/FlareSolverr/FlareSolverr)
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ngosang)
-
 FlareSolverr is a proxy server to bypass Cloudflare and DDoS-GUARD protection. This fork uses a fork of Selenium Wire for fixing [this issue](https://github.com/FlareSolverr/FlareSolverr/issues/1162).
+
+This fork also does an overhaul of some sorts on the codebase while also eliminating some code that was never being used. This is only supposed to be used on Linux.
+
+This README is not very accurate at this moment.
 
 ## How it works
 
@@ -94,8 +89,7 @@ This is the recommended way for Windows users.
 - (Only in Linux) Install [Xvfb](https://en.wikipedia.org/wiki/Xvfb) package.
 - (Only in macOS) Install [XQuartz](https://www.xquartz.org/) package.
 - Clone this repository and open a shell in that path.
-- Run `pip install -r requirements.txt` command to install FlareSolverr dependencies.
-- Run `python src/flaresolverr.py` command to start FlareSolverr.
+- Run `python src/flaresolverr.py` command to start FlareSolverr with FastAPI/Uvicorn.
 
 ### From source code (FreeBSD/TrueNAS CORE)
 
@@ -344,4 +338,3 @@ to the file name of one of the adapters inside the `/captcha` directory.
 ## Related projects
 
 - C# implementation => https://github.com/FlareSolverr/FlareSolverrSharp
-

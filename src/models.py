@@ -38,6 +38,7 @@ class ChallengeResolutionResultT:
     status: int | None = None
     headers: dict[str, str] | None = None
     response: str | None = None
+    responseBase64: str | None = None
     # selenium `driver.get_cookies()` returns list[dict[str, Any]] (cookie-like dicts)
     cookies: list[dict[Any, Any]] | None = None
     userAgent: str | None = None

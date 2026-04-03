@@ -1,12 +1,36 @@
 import unittest
+from base64 import b64decode
 from typing import Any, Optional, cast
 
 # pyright: reportGeneralTypeIssues=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportArgumentType=false, reportCallIssue=false, reportIndexIssue=false, reportAttributeAccessIssue=false, reportUnknownMemberType=false
-from webtest import TestApp
+from fastapi.testclient import TestClient
 
-import flaresolverr
+import app
+import service
 import utils
-from dtos import STATUS_ERROR, STATUS_OK, HealthResponse, IndexResponse, V1ResponseBase
+from models import STATUS_ERROR, STATUS_OK, HealthResponse, IndexResponse, V1ResponseBase
+
+
+class CompatTestClient:
+    def __init__(self, app):
+        self.client = TestClient(app)
+
+    def get(self, path: str, status: int | None = None):
+        response = self.client.get(path)
+        if status is not None:
+            assert response.status_code == status
+        return response
+
+    def post(self, path: str, json: Any | None = None, status: int | None = None):
+        response = self.client.post(path, json=json)
+        if status is not None:
+            assert response.status_code == status
+        return response
+
+    def post_json(
+        self, path: str, params: Any | None = None, status: int | None = None
+    ):
+        return self.post(path, json=params, status=status)
 
 
 def _find_obj_by_key(
@@ -57,7 +81,7 @@ class TestFlareSolverr(unittest.TestCase):
         "https://cpasbiens3.fr/index.php?do=search&subaction=search"
     )
 
-    app = TestApp(flaresolverr.app)
+    app = CompatTestClient(app.app)
     # wait until the server is ready
     app.get("/")
 
@@ -65,7 +89,7 @@ class TestFlareSolverr(unittest.TestCase):
         res = self.app.get("/wrong", status=404)
         self.assertEqual(res.status_code, 404)
 
-        body = res.json
+        body = res.json()
         self.assertEqual("Not found: '/wrong'", body["error"])
         self.assertEqual(404, body["status_code"])
 
@@ -73,7 +97,7 @@ class TestFlareSolverr(unittest.TestCase):
         res = self.app.get("/")
         self.assertEqual(res.status_code, 200)
 
-        body = IndexResponse(res.json)
+        body = IndexResponse(res.json())
         self.assertEqual("FlareSolverr is ready!", _require_str(body.msg))
         self.assertEqual(utils.get_flaresolverr_version(), _require_str(body.version))
         self.assertIn("Chrome/", _require_str(body.userAgent))
@@ -82,16 +106,32 @@ class TestFlareSolverr(unittest.TestCase):
         res = self.app.get("/health")
         self.assertEqual(res.status_code, 200)
 
-        body = HealthResponse(res.json)
+        body = HealthResponse(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
 
-    def test_v1_endpoint_wrong_cmd(self):
-        res = self.app.post_json(
-            "/v1", params={"cmd": "request.bad", "url": self.google_url}, status=500
+    def test_detect_text_content_type(self):
+        self.assertTrue(
+            service._is_text_content_type({"Content-Type": "text/html"})
         )
+        self.assertTrue(
+            service._is_text_content_type(
+                {"content-type": "application/json; charset=utf-8"}
+            )
+        )
+        self.assertFalse(
+            service._is_text_content_type({"Content-Type": "image/png"})
+        )
+
+    def test_decode_binary_body_as_base64(self):
+        payload = b"\x89PNG\r\n\x1a\nbinary"
+        encoded = service.b64encode(payload).decode("ascii")
+        self.assertEqual(payload, b64decode(encoded))
+
+    def test_v1_endpoint_wrong_cmd(self):
+        res = self.app.post("/v1", json={"cmd": "request.bad", "url": self.google_url})
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertEqual(
             "Error: Request parameter 'cmd' = 'request.bad' is invalid.",
@@ -104,12 +144,10 @@ class TestFlareSolverr(unittest.TestCase):
         self.assertEqual(utils.get_flaresolverr_version(), _require_str(body.version))
 
     def test_v1_endpoint_request_get_no_cloudflare(self):
-        res = self.app.post_json(
-            "/v1", params={"cmd": "request.get", "url": self.google_url}
-        )
+        res = self.app.post("/v1", json={"cmd": "request.get", "url": self.google_url})
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -127,13 +165,13 @@ class TestFlareSolverr(unittest.TestCase):
         self.assertIn("Chrome/", _require_str(solution.userAgent))
 
     def test_v1_endpoint_request_get_disable_resources(self):
-        res = self.app.post_json(
+        res = self.app.post(
             "/v1",
-            params={"cmd": "request.get", "url": self.google_url, "disableMedia": True},
+            json={"cmd": "request.get", "url": self.google_url, "disableMedia": True},
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -156,7 +194,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge solved!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -183,7 +221,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge solved!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -213,7 +251,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge solved!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -240,7 +278,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge solved!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -270,7 +308,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge solved!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -303,7 +341,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertEqual(
             "Error: Error solving the challenge. Cloudflare has blocked this request. "
@@ -330,7 +368,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -370,7 +408,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -398,7 +436,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -430,7 +468,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -458,7 +496,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -487,7 +525,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertIn(
             "Error: Error solving the challenge. Message: unknown error: net::ERR_PROXY_CONNECTION_FAILED",
@@ -507,7 +545,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertEqual(
             "Error: Error solving the challenge. Timeout after 0.01 seconds.",
@@ -527,7 +565,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertIn(
             "Message: unknown error: net::ERR_NAME_NOT_RESOLVED",
@@ -545,7 +583,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
 
@@ -560,7 +598,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -591,7 +629,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge solved!", _require_str(body.message))
         self.assertGreater(_require_int(body.startTimestamp), 10000)
@@ -618,7 +656,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertIn(
             "Request parameter 'postData' is mandatory in 'request.post' command",
@@ -637,7 +675,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Challenge not detected!", _require_str(body.message))
 
@@ -645,7 +683,7 @@ class TestFlareSolverr(unittest.TestCase):
         res = self.app.post_json("/v1", {"cmd": "sessions.create"})
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Session created successfully.", _require_str(body.message))
         self.assertIsNotNone(body.session)
@@ -656,7 +694,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Session created successfully.", _require_str(body.message))
         self.assertEqual(body.session, "test_create_session")
@@ -667,7 +705,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("Session created successfully.", _require_str(body.message))
         self.assertIsNotNone(body.session)
@@ -679,7 +717,7 @@ class TestFlareSolverr(unittest.TestCase):
         res = self.app.post_json("/v1", params={"cmd": "sessions.list"})
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("", _require_str(body.message))
         self.assertGreaterEqual(len(cast(list[str], body.sessions)), 1)
@@ -695,7 +733,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
         self.assertEqual("The session has been removed.", _require_str(body.message))
 
@@ -707,7 +745,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 500)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_ERROR, _require_str(body.status))
         self.assertEqual(
             "Error: The session doesn't exist.", _require_str(body.message)
@@ -727,7 +765,7 @@ class TestFlareSolverr(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
 
-        body = V1ResponseBase(res.json)
+        body = V1ResponseBase(res.json())
         self.assertEqual(STATUS_OK, _require_str(body.status))
 
 
