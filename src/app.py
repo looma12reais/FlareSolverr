@@ -11,9 +11,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-import service
-import utils
-from models import V1RequestBase
+from src import service, utils
+from src.models import V1RequestBase
 
 logger = logging.getLogger(__name__)
 
@@ -130,53 +129,52 @@ async def controller_v1(request: Request):
         return JSONResponse(status_code=500, content=payload)
     return payload
 
+# fix for HEADLESS=false in Windows binary
+# https://stackoverflow.com/a/27694505
+if os.name == "nt":
+    import multiprocessing
+
+    multiprocessing.freeze_support()
+
+# fix ssl certificates for compiled binaries
+# https://github.com/pyinstaller/pyinstaller/issues/7229
+# https://stackoverflow.com/q/55736855
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+os.environ["SSL_CERT_FILE"] = certifi.where()
+
+# validate configuration
+log_level = os.environ.get("LOG_LEVEL", "info").upper()
+log_file = os.environ.get("LOG_FILE", None)
+server_host = os.environ.get("HOST", "0.0.0.0")
+server_port = int(os.environ.get("PORT", 8191))
+
+logging.basicConfig(
+    level=log_level,
+    format="%(asctime)s [%(levelname)s/%(name)s] %(message)s",
+    handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)]
+    if log_file
+    else [logging.StreamHandler(sys.stdout)],
+)
+
+# disable warning traces from urllib3
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+logging.getLogger("selenium.webdriver.remote.remote_connection").setLevel(
+    logging.WARNING
+)
+logging.getLogger("undetected").setLevel(logging.WARNING)
+logging.getLogger("seleniumwire.handler").setLevel(logging.WARNING)
+logging.getLogger("mitmproxy.proxy.server").setLevel(logging.WARNING)
+
+logger.info(f"FlareSolverr {utils.get_flaresolverr_version()}")
+logger.debug("Debug log enabled")
+
+# Get current OS for global variable
+utils.get_current_platform()
+
+# test browser installation
+service.test_browser_installation()
 
 if __name__ == "__main__":
-    # fix for HEADLESS=false in Windows binary
-    # https://stackoverflow.com/a/27694505
-    if os.name == "nt":
-        import multiprocessing
-
-        multiprocessing.freeze_support()
-
-    # fix ssl certificates for compiled binaries
-    # https://github.com/pyinstaller/pyinstaller/issues/7229
-    # https://stackoverflow.com/q/55736855
-    os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-    os.environ["SSL_CERT_FILE"] = certifi.where()
-
-    # validate configuration
-    log_level = os.environ.get("LOG_LEVEL", "info").upper()
-    log_file = os.environ.get("LOG_FILE", None)
-    server_host = os.environ.get("HOST", "0.0.0.0")
-    server_port = int(os.environ.get("PORT", 8191))
-    
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s [%(levelname)s/%(name)s] %(message)s",
-        handlers=[logging.FileHandler(log_file), logging.StreamHandler(sys.stdout)]
-        if log_file
-        else [logging.StreamHandler(sys.stdout)],
-    )
-
-    # disable warning traces from urllib3
-    logging.getLogger("urllib3").setLevel(logging.ERROR)
-    logging.getLogger("selenium.webdriver.remote.remote_connection").setLevel(
-        logging.WARNING
-    )
-    logging.getLogger("undetected").setLevel(logging.WARNING)
-    logging.getLogger("seleniumwire.handler").setLevel(logging.WARNING)
-    logging.getLogger("mitmproxy.proxy.server").setLevel(logging.WARNING)
-
-    logger.info(f"FlareSolverr {utils.get_flaresolverr_version()}")
-    logger.debug("Debug log enabled")
-
-    # Get current OS for global variable
-    utils.get_current_platform()
-
-    # test browser installation
-    service.test_browser_installation()
-
     uvicorn.run(
         app,
         host=server_host,

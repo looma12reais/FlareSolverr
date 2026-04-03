@@ -6,7 +6,7 @@ from uuid import uuid1
 
 from selenium.webdriver.chrome.webdriver import WebDriver
 
-import utils
+from src import utils
 
 logger = logging.getLogger(__name__)
 

@@ -9,10 +9,10 @@ from typing import cast
 from urllib.parse import quote, unquote, urlparse
 from zlib import decompress as zlib_decompress
 
-import utils
 from brotli import decompress as brotli_decompress
 from func_timeout import FunctionTimedOut, func_timeout
-from models import (
+from src import utils
+from src.models import (
     STATUS_ERROR,
     STATUS_OK,
     ChallengeResolutionResultT,
@@ -35,7 +35,7 @@ from selenium.webdriver.support.expected_conditions import (
 from selenium.webdriver.support.wait import WebDriverWait
 from seleniumwire.request import Request
 from seleniumwire_gpl.webdriver import UndetectedChrome
-from sessions import SessionsStorage
+from src.sessions import SessionsStorage
 
 logger = logging.getLogger(__name__)
 

@@ -3,9 +3,8 @@ from typing import Any, cast
 
 from fastapi.testclient import TestClient
 
-import app
-import utils
-from models import STATUS_OK, ChallengeResolutionResultT, V1ResponseBase
+from src import app, utils
+from src.models import STATUS_OK, ChallengeResolutionResultT, V1ResponseBase
 
 
 class CompatTestClient:

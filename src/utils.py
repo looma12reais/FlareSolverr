@@ -8,7 +8,7 @@ from typing import Any
 import undetected as uc
 from selenium.webdriver.chrome.webdriver import WebDriver
 from seleniumwire import ProxyConfig, SeleniumWireOptions
-from wire import UndetectedChrome
+from src.wire import UndetectedChrome
 
 logger = logging.getLogger(__name__)
 

@@ -78,6 +78,7 @@ dependencies = [
     "zstandard==0.25.0",
     "fastapi==0.117.1",
     "zstd==1.5.7.3",
+    "gunicorn>=25.3.0",
 ]
 
 [tool.uv.sources]

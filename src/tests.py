@@ -5,10 +5,8 @@ from typing import Any, Optional, cast
 # pyright: reportGeneralTypeIssues=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportArgumentType=false, reportCallIssue=false, reportIndexIssue=false, reportAttributeAccessIssue=false, reportUnknownMemberType=false
 from fastapi.testclient import TestClient
 
-import app
-import service
-import utils
-from models import STATUS_ERROR, STATUS_OK, HealthResponse, IndexResponse, V1ResponseBase
+from src import app, service, utils
+from src.models import STATUS_ERROR, STATUS_OK, HealthResponse, IndexResponse, V1ResponseBase
 
 
 class CompatTestClient:

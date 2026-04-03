@@ -57,8 +57,8 @@ USER flaresolverr
 
 RUN mkdir -p "/app/.config/chromium/Crash Reports/pending"
 
-COPY src .
-COPY package.json ../
+COPY src /app/src
+COPY package.json /app/src
 
 EXPOSE 8191
 EXPOSE 8192
@@ -66,7 +66,7 @@ EXPOSE 8192
 # dumb-init avoids zombie chromium processes
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
-CMD ["/app/.venv/bin/python", "-u", "/app/app.py"]
+CMD ["/app/.venv/bin/gunicorn", "--chdir", "/app", "--pythonpath", "/app", "src.app:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "1", "-b", "0.0.0.0:8191"]
 
 # Local build
 # docker build -t ngosang/flaresolverr:3.4.6 .

@@ -1,0 +1,1 @@
+# FlareSolverr application package.
